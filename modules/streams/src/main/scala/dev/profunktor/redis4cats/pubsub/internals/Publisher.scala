@@ -32,8 +32,10 @@ private[pubsub] class Publisher[F[_]: FlatMap: FutureLift, K, V](
 
   private[redis4cats] val pubSubStats: PubSubStats[Stream[F, *], K] = new LivePubSubStats(pubConnection)
 
-  override def publish(channel: RedisChannel[K]): Stream[F, V] => Stream[F, Unit] =
-    _.evalMap(message => FutureLift[F].lift(pubConnection.async().publish(channel.underlying, message)).void)
+  override def publish(channel: RedisChannel[K]): Stream[F, V] => Stream[F, Unit] = stream => {
+    stream
+      .evalMap(message => FutureLift[F].lift(pubConnection.async().publish(channel.underlying, message)).void)
+  }
 
   override def pubSubChannels: Stream[F, List[K]] =
     pubSubStats.pubSubChannels

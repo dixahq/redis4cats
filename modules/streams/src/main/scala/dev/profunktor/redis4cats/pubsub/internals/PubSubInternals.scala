@@ -26,6 +26,7 @@ import dev.profunktor.redis4cats.effect.Log
 import fs2.concurrent.Topic
 import io.lettuce.core.pubsub.{ RedisPubSubListener, StatefulRedisPubSubConnection }
 import io.lettuce.core.pubsub.RedisPubSubAdapter
+import cats.effect.kernel.Deferred
 
 object PubSubInternals {
 
@@ -44,13 +45,36 @@ object PubSubInternals {
   private[redis4cats] def patternListener[F[_]: Async, K, V](
       redisPattern: RedisPattern[K],
       topic: Topic[F, Option[RedisPatternEvent[K, V]]],
-      dispatcher: Dispatcher[F]
+      dispatcher: Dispatcher[F],
+      hasSubscribed: Deferred[F, Unit]
   ): RedisPubSubListener[K, V] =
-    new RedisPubSubAdapter[K, V] {
-      override def message(pattern: K, channel: K, message: V): Unit =
+    new RedisPubSubListener[K, V] {
+      override def message(pattern: K, channel: K, message: V): Unit = {
+        println(s"Received message $message for pattern $pattern")
         if (pattern == redisPattern.underlying) {
           dispatcher.unsafeRunSync(topic.publish1(Option(RedisPatternEvent(pattern, channel, message))).void)
+          println("After dispatch")
         }
+      }
+
+      override def psubscribed(pattern: K, count: Long): Unit =
+        if (pattern == redisPattern.underlying) {
+          println(s"psubscribed $hasSubscribed")
+          //dispatcher.unsafeRunSync(hasSubscribed.complete(()).void)
+        }
+
+      override def punsubscribed(pattern: K, count: Long): Unit =
+        println(s"unsubscribed $pattern")
+
+      override def message(k: K, v: V): Unit =
+        println(s"Got message $k $v")
+
+      override def subscribed(k: K, v: Long): Unit =
+        println(s"subscribed $k $v")
+
+      override def unsubscribed(k: K, v: Long): Unit =
+        println(s"unsubscribed $k $v")
+
     }
 
   private[redis4cats] def channel[F[_]: Async: Log, K, V](
@@ -78,7 +102,8 @@ object PubSubInternals {
 
   private[redis4cats] def pattern[F[_]: Async: Log, K, V](
       state: Ref[F, PubSubState[F, K, V]],
-      subConnection: StatefulRedisPubSubConnection[K, V]
+      subConnection: StatefulRedisPubSubConnection[K, V],
+      hasSubscribed: Deferred[F, Unit]
   ): GetOrCreatePatternListener[F, K, V] = { channel => st =>
     st.patterns
       .get(channel.underlying)
@@ -87,12 +112,12 @@ object PubSubInternals {
           dispatcher <- Dispatcher[F]
           topic <- Resource.eval(Topic[F, Option[RedisPatternEvent[K, V]]])
           _ <- Resource.eval(Log[F].info(s"Creating listener for pattern: $channel"))
-          listener = patternListener(channel, topic, dispatcher)
+          listener = patternListener(channel, topic, dispatcher, hasSubscribed)
           _ <- Resource.make {
                 Sync[F].delay(subConnection.addListener(listener)) *>
                   state.update(s => s.copy(patterns = s.patterns.updated(channel.underlying, topic)))
               } { _ =>
-                Sync[F].delay(subConnection.removeListener(listener)) *>
+                Sync[F].delay { println(s"releasing $channel"); subConnection.removeListener(listener) } *>
                   state.update(s => s.copy(patterns = s.patterns - channel.underlying))
               }
         } yield topic

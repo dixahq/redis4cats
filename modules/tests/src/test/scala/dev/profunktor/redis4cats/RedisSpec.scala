@@ -16,41 +16,41 @@
 
 package dev.profunktor.redis4cats
 
-import dev.profunktor.redis4cats.data.RedisCodec
+//import dev.profunktor.redis4cats.data.RedisCodec
 import io.lettuce.core.codec.{ ToByteBufEncoder, RedisCodec => JRedisCodec, StringCodec => JStringCodec }
 import io.netty.buffer.ByteBuf
 
 class RedisSpec extends Redis4CatsFunSuite(false) with TestScenarios {
 
-  test("geo api")(withRedis(locationScenario))
+  //test("geo api")(withRedis(locationScenario))
 
-  test("hashes api")(withRedis(hashesScenario))
+  //test("hashes api")(withRedis(hashesScenario))
 
-  test("lists api")(withRedis(listsScenario))
+  //test("lists api")(withRedis(listsScenario))
 
-  test("keys api")(withRedis(cmd => keysScenario(cmd) >> scanScenario(cmd)))
+  //test("keys api")(withRedis(cmd => keysScenario(cmd) >> scanScenario(cmd)))
 
-  test("sets api")(withRedis(setsScenario))
+  //test("sets api")(withRedis(setsScenario))
 
-  test("sorted sets api")(withAbstractRedis(sortedSetsScenario)(RedisCodec(LongCodec)))
+  //test("sorted sets api")(withAbstractRedis(sortedSetsScenario)(RedisCodec(LongCodec)))
 
-  test("bitmaps api")(withRedis(bitmapsScenario))
+  //test("bitmaps api")(withRedis(bitmapsScenario))
 
-  test("strings api")(withRedis(stringsScenario))
+  //test("strings api")(withRedis(stringsScenario))
 
-  test("connection api")(withRedis(connectionScenario))
+  //test("connection api")(withRedis(connectionScenario))
 
-  test("pipelining")(withRedis(pipelineScenario))
+  //test("pipelining")(withRedis(pipelineScenario))
 
-  test("server")(withRedis(serverScenario))
+  //test("server")(withRedis(serverScenario))
 
-  test("transactions: successful")(withRedis(transactionScenario))
+  //test("transactions: successful")(withRedis(transactionScenario))
 
-  test("scripts")(withRedis(scriptsScenario))
+  //test("scripts")(withRedis(scriptsScenario))
 
-  test("hyperloglog api")(withRedis(hyperloglogScenario))
+  //test("hyperloglog api")(withRedis(hyperloglogScenario))
 
-  test("pattern key sub")(withRedisClient(keyPatternSubScenario))
+  //test("pattern key sub")(withRedisClient(keyPatternSubScenario))
 
   test("pattern channel sub")(withRedisClient(channelPatternSubScenario))
 

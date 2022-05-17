@@ -28,6 +28,7 @@ import dev.profunktor.redis4cats.data.RedisPatternEvent
 import dev.profunktor.redis4cats.effect.{ FutureLift, Log }
 import fs2.Stream
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection
+//import scala.concurrent.duration._
 
 private[pubsub] class Subscriber[F[_]: Async: FutureLift: Log, K, V](
     state: Ref[F, PubSubState[F, K, V]],
@@ -53,8 +54,15 @@ private[pubsub] class Subscriber[F[_]: Async: FutureLift: Log, K, V](
 
   override def psubscribe(pattern: RedisPattern[K]): Stream[F, RedisPatternEvent[K, V]] =
     Stream
-      .resource(Resource.eval(state.get) >>= PubSubInternals.pattern[F, K, V](state, subConnection).apply(pattern))
+      .resource(for {
+        hasSubscribed <- Resource.eval(Deferred[F, Unit])
+        currentState <- Resource.eval(state.get)
+        sub <- PubSubInternals.pattern[F, K, V](state, subConnection, hasSubscribed).apply(pattern)(currentState)
+      } yield (sub, hasSubscribed))
       .evalTap(_ => FutureLift[F].lift(subConnection.async().psubscribe(pattern.underlying)))
+      .evalMap { case (sub, _) => Async[F].unit.map(_ => sub) }
+      //.evalTap(_ => Async[F].sleep(2.seconds))
+      //.evalTap(_ => Async[F].delay(println("ready!!!")))
       .flatMap(_.subscribe(500).unNone)
 
   override def punsubscribe(pattern: RedisPattern[K]): Stream[F, Unit] =

@@ -50,13 +50,18 @@ private[pubsub] class LivePubSubCommands[F[_]: Async: Log, K, V](
   override def punsubscribe(pattern: RedisPattern[K]): Stream[F, Unit] =
     subCommands.punsubscribe(pattern)
 
-  override def publish(channel: RedisChannel[K]): Stream[F, V] => Stream[F, Unit] =
-    _.flatMap { message =>
+  override def publish(channel: RedisChannel[K]): Stream[F, V] => Stream[F, Unit] = stream => {
+    stream.flatMap { message =>
       Stream.resource(
         Resource.eval(state.get) >>= PubSubInternals.channel[F, K, V](state, subConnection).apply(channel)
       ) >>
-        Stream.eval(FutureLift[F].lift(pubConnection.async().publish(channel.underlying, message)).void)
+        Stream.eval {
+          for {
+            _ <- FutureLift[F].lift(pubConnection.async().publish(channel.underlying, message)).void
+          } yield ()
+        }
     }
+  }
 
   override def pubSubChannels: Stream[F, List[K]] =
     pubSubStats.pubSubChannels

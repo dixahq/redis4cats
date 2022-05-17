@@ -34,6 +34,10 @@ import scala.concurrent.duration._
 import dev.profunktor.redis4cats.connection.RedisClient
 import dev.profunktor.redis4cats.pubsub.PubSub
 import dev.profunktor.redis4cats.data.{ RedisChannel, RedisCodec, RedisPattern, RedisPatternEvent }
+import java.util.UUID
+import cats.effect.kernel.Outcome.Canceled
+import cats.effect.kernel.Outcome.Errored
+import cats.effect.kernel.Outcome.Succeeded
 
 trait TestScenarios { self: FunSuite =>
 
@@ -582,48 +586,82 @@ trait TestScenarios { self: FunSuite =>
   def keyPatternSubScenario(client: RedisClient): IO[Unit] = {
     import dev.profunktor.redis4cats.effect.Log.NoOp._
 
-    val pattern = "__keyevent*__:*"
-    val key     = "somekey"
+    val pattern = "__keyevent*__:expired*"
+    val key     = UUID.randomUUID().toString + "-somekey"
     val resources = for {
       commands <- Redis[IO].fromClient(client, RedisCodec.Utf8)
       sub <- PubSub.mkSubscriberConnection[IO, String, String](client, RedisCodec.Utf8)
       stream <- Resource.pure(sub.psubscribe(RedisPattern(pattern)))
       listener <- Resource.eval(stream.head.compile.toList.start)
-      _ <- Resource.eval(commands.set(key, ""))
-      _ <- Resource.eval(commands.expire(key, 1.seconds))
+      _ <- (for {
+            _ <- commands.setEx(key, "", 1.second)
+            _ <- IO.sleep(2.seconds)
+          } yield ()).foreverM.background
       firstEvent <- Resource.eval(
                      listener.joinWith(IO.raiseError(new IllegalStateException("Fiber should not be cancelled")))
                    )
     } yield firstEvent.headOption
-    resources.use(IO.pure).map { result =>
-      assert(
-        result == Some(RedisPatternEvent(pattern, "__keyevent@0__:expired", key)),
-        s"Unexpected result $result"
-      )
+    val expectedEvent = RedisPatternEvent(pattern, "__keyevent@0__:expired", key)
+    resources.use { result =>
+      IO {
+        assert(
+          result == Some(expectedEvent),
+          s"Unexpected result $result, expected $expectedEvent"
+        )
+      }
     }
   }
 
   def channelPatternSubScenario(client: RedisClient): IO[Unit] = {
     import dev.profunktor.redis4cats.effect.Log.NoOp._
 
-    val pattern = "f*"
-    val channel = "foo"
-    val message = "somemessage"
+    println("da test------------------")
+    val randomRoot = UUID.randomUUID().toString
+    val pattern    = s"$randomRoot-f*"
+    val channel    = s"$randomRoot-foo"
+    val message    = UUID.randomUUID().toString + "-somemessage"
+    println(s"pattern = $pattern")
     val resources = for {
+      _ <- Resource.eval(IO.sleep(10.seconds))
       pubsub <- PubSub.mkPubSubConnection[IO, String, String](client, RedisCodec.Utf8)
       stream <- Resource.pure(pubsub.psubscribe(RedisPattern(pattern)))
-      listener <- Resource.eval(stream.head.compile.toList.start)
-      _ <- Resource.eval(IO.sleep(100.millis))
-      _ <- Resource.eval(pubsub.publish(RedisChannel(channel))(fs2.Stream(message)).compile.drain)
+      listener <- (stream.evalTap(s => IO(println(s"da message $s"))).compile.toList).background
+      _ <- Resource.eval(IO.sleep(1.second))
+      _ <- fs2.Stream
+            .awakeEvery[IO](100.milli)
+            .map(_ => message)
+            .through(pubsub.publish(RedisChannel(channel)))
+            .compile
+            .drain
+            .background
+      //_ <- pubsub
+      //.publish(RedisChannel(channel))(fs2.Stream(message))
+      //.compile
+      //.drain
+      //.flatMap(_ => IO(println("Sent")))
+      //.flatMap(_ => IO.sleep(100.milli))
+      //.onError(t => IO(println(s"Got error $t")))
+      //.onCancel(IO(println(s"Got cancelled")))
+      //.foreverM
+      //.background
+      _ = println("waiting for listener")
       firstEvent <- Resource.eval(
-                     listener.joinWith(IO.raiseError(new IllegalStateException("Fiber should not be cancelled")))
+                     listener.flatMap {
+                       case Canceled()    => IO.raiseError(new IllegalStateException("got cancelled!"))
+                       case Errored(e)    => IO.raiseError(e)
+                       case Succeeded(fa) => fa
+                     }
                    )
+      _ = println("got listener result")
     } yield firstEvent.headOption
-    resources.use(IO.pure).map { result =>
-      assert(
-        result == Some(RedisPatternEvent(pattern, channel, message)),
-        s"Unexpected result $result"
-      )
+    resources.use { result =>
+      println("using result")
+      IO {
+        assert(
+          result == Some(RedisPatternEvent(pattern, channel, message)),
+          s"Unexpected result $result"
+        )
+      }
     }
   }
 }

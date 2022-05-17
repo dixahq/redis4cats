@@ -152,6 +152,7 @@ lazy val tests = project
   .settings(commonSettings: _*)
   .settings(Test / parallelExecution := false)
   .settings(noPublish)
+  .settings(Test / fork := true)
   .enablePlugins(AutomateHeaderPlugin)
   .dependsOn(`redis4cats-core`)
   .dependsOn(`redis4cats-effects`)
