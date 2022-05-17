@@ -609,6 +609,7 @@ trait TestScenarios { self: FunSuite =>
     val pattern = "f*"
     val channel = "foo"
     val message = "somemessage"
+    println("da test!-------------------------------")
     val resources = for {
       pubsub <- PubSub.mkPubSubConnection[IO, String, String](client, RedisCodec.Utf8)
       stream <- Resource.pure(pubsub.psubscribe(RedisPattern(pattern)))

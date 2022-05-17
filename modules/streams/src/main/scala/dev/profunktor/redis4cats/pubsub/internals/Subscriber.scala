@@ -53,9 +53,20 @@ private[pubsub] class Subscriber[F[_]: Async: FutureLift: Log, K, V](
 
   override def psubscribe(pattern: RedisPattern[K]): Stream[F, RedisPatternEvent[K, V]] =
     Stream
-      .resource(Resource.eval(state.get) >>= PubSubInternals.pattern[F, K, V](state, subConnection).apply(pattern))
+      .resource(
+        for {
+          currentState <- Resource.eval(state.get)
+          hasSubscribed <- Resource.eval(Deferred[F, Unit])
+          sub <- PubSubInternals.pattern[F, K, V](state, subConnection, hasSubscribed).apply(pattern)(currentState)
+        } yield (sub, hasSubscribed)
+      )
       .evalTap(_ => FutureLift[F].lift(subConnection.async().psubscribe(pattern.underlying)))
-      .flatMap(_.subscribe(500).unNone)
+      .evalTap {
+        case (_, hasSubscribed) =>
+          println(s"Waiting for $hasSubscribed ${hasSubscribed.hashCode()}")
+          hasSubscribed.get
+      }
+      .flatMap(_._1.subscribe(500).unNone)
 
   override def punsubscribe(pattern: RedisPattern[K]): Stream[F, Unit] =
     Stream.eval {
