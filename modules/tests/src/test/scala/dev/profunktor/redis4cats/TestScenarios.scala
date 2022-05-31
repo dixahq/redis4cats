@@ -621,13 +621,14 @@ trait TestScenarios { self: FunSuite =>
       stream <- Resource.pure(pubsub.psubscribe(RedisPattern(pattern)))
       listener <- Resource.eval(stream.head.compile.toList.start)
       _ <- Stream
-            .awakeEvery[IO](100.milli)
+            .awakeEvery[IO](10.milli)
             .map(_ => message)
             .evalTap(_ => Log[IO].info(s"Publishing..."))
             .through(pubsub.publish(RedisChannel(channel)))
             .compile
             .drain
             .background
+      _ <- Resource.eval(IO.sleep(1.second))
       firstEvent <- Resource.eval(
                      listener.joinWith(IO.raiseError(new IllegalStateException("Fiber should not be cancelled")))
                    )

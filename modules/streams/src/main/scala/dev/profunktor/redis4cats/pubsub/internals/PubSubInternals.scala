@@ -26,19 +26,28 @@ import dev.profunktor.redis4cats.effect.Log
 import fs2.concurrent.Topic
 import io.lettuce.core.pubsub.{ RedisPubSubListener, StatefulRedisPubSubConnection }
 import io.lettuce.core.pubsub.RedisPubSubAdapter
+import java.util.UUID
 
 object PubSubInternals {
 
-  private[redis4cats] def channelListener[F[_]: Async, K, V](
+  private[redis4cats] def channelListener[F[_]: Async: Log, K, V](
       channel: RedisChannel[K],
       topic: Topic[F, Option[V]],
       dispatcher: Dispatcher[F]
   ): RedisPubSubListener[K, V] =
     new RedisPubSubAdapter[K, V] {
-      override def message(ch: K, msg: V): Unit =
+      override def message(ch: K, msg: V): Unit = {
+        println("------------------------------------------------------------------------")
         if (ch == channel.underlying) {
-          dispatcher.unsafeRunSync(topic.publish1(Option(msg)).void)
+          val id = UUID.randomUUID().toString
+          dispatcher.unsafeRunSync(for {
+            _ <- Log[F].info(s"$id: Received channel message $msg for channel $ch")
+            _ <- topic.publish1(Option(msg)).void
+            _ <- Log[F].info(s"$id: Pushed channel message")
+          } yield ())
+
         }
+      }
       override def message(pattern: K, channel: K, message: V): Unit = this.message(channel, message)
     }
   private[redis4cats] def patternListener[F[_]: Async: Log, K, V](
@@ -63,25 +72,31 @@ object PubSubInternals {
         }
     }
 
-  private[redis4cats] def channel[F[_]: Async: Log, K, V](
+  private[redis4cats] def channel[F[_]: Async, K, V](
       state: Ref[F, PubSubState[F, K, V]],
       subConnection: StatefulRedisPubSubConnection[K, V]
   ): GetOrCreateTopicListener[F, K, V] = { channel => st =>
+    //val id = UUID.randomUUID().toString
+    println(state)
+    println(subConnection)
     st.channels
       .get(channel.underlying)
       .fold {
         for {
-          dispatcher <- Dispatcher[F]
+          _ <- Dispatcher[F]
           topic <- Resource.eval(Topic[F, Option[V]])
-          _ <- Resource.eval(Log[F].info(s"Creating listener for channel: $channel"))
-          listener = channelListener(channel, topic, dispatcher)
-          _ <- Resource.make {
-                Sync[F].delay(subConnection.addListener(listener)) *>
-                  state.update(s => s.copy(channels = s.channels.updated(channel.underlying, topic)))
-              } { _ =>
-                Sync[F].delay(subConnection.removeListener(listener)) *>
-                  state.update(s => s.copy(channels = s.channels - channel.underlying))
-              }
+          //_ <- Resource.eval(Log[F].info(s"$id: Creating listener for channel: $channel"))
+          //listener = channelListener(channel, topic, dispatcher)
+          //_ <- Resource.make {
+          //Sync[F].delay(subConnection.addListener(listener)) *>
+          //state.update(s => s.copy(channels = s.channels.updated(channel.underlying, topic)))
+          //} { _ =>
+          //for {
+          //_ <- Log[F].info(s"$id: Removing listener")
+          //_ <- Sync[F].delay(subConnection.removeListener(listener))
+          //_ <- state.update(s => s.copy(channels = s.channels - channel.underlying))
+          //} yield ()
+          //}
         } yield topic
       }(Resource.pure)
   }

@@ -66,6 +66,7 @@ object PubSub {
                 for {
                   _ <- Log[F].info("Releasing sub connection")
                   _ <- release(x)
+                  _ <- Log[F].info("Released sub connection")
                 } yield ()
               )
       pConn <- Resource.make(acquire)(x =>

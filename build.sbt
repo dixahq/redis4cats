@@ -152,6 +152,7 @@ lazy val tests = project
   .settings(commonSettings: _*)
   .settings(Test / parallelExecution := false)
   .settings(Test / fork := true)
+  .settings(Test / javaOptions += "-XX:ActiveProcessorCount=2")
   .settings(libraryDependencies += Libraries.logback % "test")
   .settings(noPublish)
   .enablePlugins(AutomateHeaderPlugin)

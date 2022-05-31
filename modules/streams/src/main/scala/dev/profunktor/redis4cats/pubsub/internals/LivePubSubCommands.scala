@@ -53,10 +53,16 @@ private[pubsub] class LivePubSubCommands[F[_]: Async: Log, K, V](
   override def publish(channel: RedisChannel[K]): Stream[F, V] => Stream[F, Unit] =
     _.flatMap { message =>
       Stream.resource(
-        Resource.eval(state.get) >>= PubSubInternals.channel[F, K, V](state, subConnection).apply(channel)
+        for {
+          s <- Resource.eval(state.get)
+          _ <- Resource.onFinalize(Log[F].info(s"Finalized"))
+          _ <- PubSubInternals.channel[F, K, V](state, subConnection).apply(channel)(s)
+          _ <- Resource.onFinalize(Log[F].info(s"Finalizing"))
+        } yield ()
       ) >>
         Stream.eval(FutureLift[F].lift(pubConnection.async().publish(channel.underlying, message)).void)
     }
+  // _.evalMap(message => FutureLift[F].lift(pubConnection.async().publish(channel.underlying, message)).void)
 
   override def pubSubChannels: Stream[F, List[K]] =
     pubSubStats.pubSubChannels
