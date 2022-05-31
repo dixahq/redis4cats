@@ -631,14 +631,20 @@ trait TestScenarios { self: FunSuite =>
       firstEvent <- Resource.eval(
                      listener.joinWith(IO.raiseError(new IllegalStateException("Fiber should not be cancelled")))
                    )
+      _ <- Resource.eval(Log[IO].info(s"Got result $firstEvent"))
     } yield firstEvent.headOption
-    resources.use { result =>
-      IO(
-        assert(
-          result == Some(RedisPatternEvent(pattern, channel, message)),
-          s"Unexpected result $result"
-        )
-      )
-    }
+    resources
+      .use { result =>
+        for {
+          _ <- Log[IO].info("During")
+          _ <- IO(
+                assert(
+                  result == Some(RedisPatternEvent(pattern, channel, message)),
+                  s"Unexpected result $result"
+                )
+              )
+        } yield ()
+      }
+      .flatTap(_ => Log[IO].info("After"))
   }
 }

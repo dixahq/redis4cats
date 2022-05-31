@@ -27,10 +27,11 @@ import dev.profunktor.redis4cats.pubsub.internals.{ LivePubSubCommands, Publishe
 import fs2.Stream
 import dev.profunktor.redis4cats.pubsub.internals.PubSubState
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection
+import cats.Monad
 
 object PubSub {
 
-  private[redis4cats] def acquireAndRelease[F[_]: Apply: FutureLift: Log, K, V](
+  private[redis4cats] def acquireAndRelease[F[_]: FlatMap: FutureLift: Log, K, V](
       client: RedisClient,
       codec: RedisCodec[K, V]
   ): (F[StatefulRedisPubSubConnection[K, V]], StatefulRedisPubSubConnection[K, V] => F[Unit]) = {
@@ -40,8 +41,11 @@ object PubSub {
     )
 
     val release: StatefulRedisPubSubConnection[K, V] => F[Unit] = c =>
-      FutureLift[F].liftCompletableFuture(c.closeAsync()) *>
-          Log[F].info(s"Releasing PubSub connection: ${client.uri.underlying}")
+      for {
+        _ <- Log[F].info(s"Releasing PubSub connection: ${client.uri.underlying}")
+        _ <- FutureLift[F].liftCompletableFuture(c.closeAsync())
+        _ <- Log[F].info(s"Released PubSub connection: ${client.uri.underlying}")
+      } yield ()
 
     (acquire, release)
   }
