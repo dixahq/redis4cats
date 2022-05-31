@@ -62,8 +62,18 @@ object PubSub {
     // One exclusive connection for subscriptions and another connection for publishing / stats
     for {
       state <- Resource.eval(Ref.of[F, PubSubState[F, K, V]](PubSubState(Map.empty, Map.empty)))
-      sConn <- Resource.make(acquire)(release)
-      pConn <- Resource.make(acquire)(release)
+      sConn <- Resource.make(acquire)(x =>
+                for {
+                  _ <- Log[F].info("Releasing sub connection")
+                  _ <- release(x)
+                } yield ()
+              )
+      pConn <- Resource.make(acquire)(x =>
+                for {
+                  _ <- Log[F].info("Releasing pub connection")
+                  _ <- release(x)
+                } yield ()
+              )
     } yield new LivePubSubCommands[F, K, V](state, sConn, pConn)
   }
 
