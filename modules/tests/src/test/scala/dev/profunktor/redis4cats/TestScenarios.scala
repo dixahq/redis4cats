@@ -617,14 +617,16 @@ trait TestScenarios { self: FunSuite =>
     val message = "somemessage"
     val resources = for {
       _ <- Resource.eval(Log[IO].info(s"Starting channel pattern sub scenario"))
-      pubsub <- PubSub.mkPubSubConnection[IO, String, String](client, RedisCodec.Utf8)
-      stream <- Resource.pure(pubsub.psubscribe(RedisPattern(pattern)))
+      sub <- PubSub.mkSubscriberConnection[IO, String, String](client, RedisCodec.Utf8)
+      pub <- PubSub.mkPublisherConnection[IO, String, String](client, RedisCodec.Utf8)
+      //pubsub <- PubSub.mkPubSubConnection[IO, String, String](client, RedisCodec.Utf8)
+      stream <- Resource.pure(sub.psubscribe(RedisPattern(pattern)))
       listener <- Resource.eval(stream.head.compile.toList.start)
       _ <- Stream
             .awakeEvery[IO](100.milli)
             .map(_ => message)
             .evalTap(_ => Log[IO].info(s"Publishing..."))
-            .through(pubsub.publish(RedisChannel(channel)))
+            .through(pub.publish(RedisChannel(channel)))
             .compile
             .drain
             .background
