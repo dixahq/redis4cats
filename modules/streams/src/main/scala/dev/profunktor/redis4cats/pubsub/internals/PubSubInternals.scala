@@ -102,8 +102,13 @@ object PubSubInternals {
                 Sync[F].delay(subConnection.addListener(listener)) *>
                   state.update(s => s.copy(patterns = s.patterns.updated(channel.underlying, topic)))
               } { _ =>
-                Sync[F].delay(subConnection.removeListener(listener)) *>
-                  state.update(s => s.copy(patterns = s.patterns - channel.underlying))
+                for {
+                  _ <- Log[F].info(s"Removing listener: $listener")
+                  _ <- Sync[F].delay(subConnection.removeListener(listener))
+                  _ <- Log[F].info(s"Removing state pattern: $channel")
+                  _ <- state.update(s => s.copy(patterns = s.patterns - channel.underlying))
+                  _ <- Log[F].info(s"Removed state pattern: $channel")
+                } yield ()
               }
         } yield topic
       }(Resource.pure)
