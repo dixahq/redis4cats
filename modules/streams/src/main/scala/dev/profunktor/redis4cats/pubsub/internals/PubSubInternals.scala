@@ -41,7 +41,7 @@ object PubSubInternals {
         }
       override def message(pattern: K, channel: K, message: V): Unit = this.message(channel, message)
     }
-  private[redis4cats] def patternListener[F[_]: Async, K, V](
+  private[redis4cats] def patternListener[F[_]: Async: Log, K, V](
       redisPattern: RedisPattern[K],
       topic: Topic[F, Option[RedisPatternEvent[K, V]]],
       dispatcher: Dispatcher[F]
@@ -49,7 +49,17 @@ object PubSubInternals {
     new RedisPubSubAdapter[K, V] {
       override def message(pattern: K, channel: K, message: V): Unit =
         if (pattern == redisPattern.underlying) {
-          dispatcher.unsafeRunSync(topic.publish1(Option(RedisPatternEvent(pattern, channel, message))).void)
+          dispatcher.unsafeRunSync(for {
+            _ <- Log[F].info(s"Got pattern message $message for pattern $pattern and channel $channel")
+            _ <- topic.publish1(Option(RedisPatternEvent(pattern, channel, message)))
+          } yield ())
+        }
+
+      override def psubscribed(pattern: K, count: Long): Unit =
+        if (pattern == redisPattern.underlying) {
+          dispatcher.unsafeRunSync(for {
+            _ <- Log[F].info(s"psubscribed $pattern")
+          } yield ())
         }
     }
 

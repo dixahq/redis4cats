@@ -35,6 +35,7 @@ import scala.concurrent.duration._
 import dev.profunktor.redis4cats.connection.RedisClient
 import dev.profunktor.redis4cats.pubsub.PubSub
 import dev.profunktor.redis4cats.data.{ RedisChannel, RedisCodec, RedisPattern, RedisPatternEvent }
+import dev.profunktor.redis4cats.effect.Log
 
 trait TestScenarios { self: FunSuite =>
 
@@ -609,18 +610,20 @@ trait TestScenarios { self: FunSuite =>
   }
 
   def channelPatternSubScenario(client: RedisClient): IO[Unit] = {
-    import dev.profunktor.redis4cats.effect.Log.NoOp._
+    import dev.profunktor.redis4cats.effect.Log.Stdout._
 
     val pattern = "f*"
     val channel = "foo"
     val message = "somemessage"
     val resources = for {
+      _ <- Resource.eval(Log[IO].info(s"Starting channel pattern sub scenario"))
       pubsub <- PubSub.mkPubSubConnection[IO, String, String](client, RedisCodec.Utf8)
       stream <- Resource.pure(pubsub.psubscribe(RedisPattern(pattern)))
       listener <- Resource.eval(stream.head.compile.toList.start)
       _ <- Stream
             .awakeEvery[IO](100.milli)
             .map(_ => message)
+            .evalTap(_ => Log[IO].info(s"Publishing..."))
             .through(pubsub.publish(RedisChannel(channel)))
             .compile
             .drain
