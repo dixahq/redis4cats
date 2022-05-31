@@ -17,7 +17,7 @@
 package dev.profunktor.redis4cats
 package pubsub
 
-//import cats.FlatMap
+import cats.FlatMap
 import cats.effect.kernel._
 import cats.syntax.all._
 import dev.profunktor.redis4cats.connection.RedisClient
@@ -30,7 +30,7 @@ import io.lettuce.core.pubsub.StatefulRedisPubSubConnection
 
 object PubSub {
 
-  private[redis4cats] def acquireAndRelease[F[_]: Async: FutureLift: Log, K, V](
+  private[redis4cats] def acquireAndRelease[F[_]: FlatMap: FutureLift: Log, K, V](
       client: RedisClient,
       codec: RedisCodec[K, V]
   ): (F[StatefulRedisPubSubConnection[K, V]], StatefulRedisPubSubConnection[K, V] => F[Unit]) = {
@@ -42,8 +42,7 @@ object PubSub {
     val release: StatefulRedisPubSubConnection[K, V] => F[Unit] = c =>
       for {
         _ <- Log[F].info(s"Releasing PubSub connection: ${client.uri.underlying}")
-        _ <- Async[F].delay(c.close())
-        //_ <- FutureLift[F].liftCompletableFuture(c.closeAsync())
+        _ <- FutureLift[F].liftCompletableFuture(c.closeAsync())
         _ <- Log[F].info(s"Released PubSub connection: ${client.uri.underlying}")
       } yield ()
 
@@ -83,7 +82,7 @@ object PubSub {
     *
     * Use this option when you only need to publish and/or get stats such as number of subscriptions.
     * */
-  def mkPublisherConnection[F[_]: Async: FutureLift: Log, K, V](
+  def mkPublisherConnection[F[_]: FlatMap: FutureLift: Log, K, V](
       client: RedisClient,
       codec: RedisCodec[K, V]
   ): Resource[F, PublishCommands[Stream[F, *], K, V]] = {
