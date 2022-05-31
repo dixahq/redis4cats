@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - series/1.x # CE3
+      - test
     paths:
       - "modules/**"
 
