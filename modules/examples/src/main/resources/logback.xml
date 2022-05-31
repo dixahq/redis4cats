@@ -10,4 +10,5 @@
     </root>
 
     <logger name="fs2"/>
+    <logger name="io.lettuce" level="DEBUG" />
 </configuration>
